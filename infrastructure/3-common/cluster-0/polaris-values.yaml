@@ -1,0 +1,23 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: polaris
+  namespace: polaris
+spec:
+  chart:
+    spec:
+      version: "5.17.1"
+  values:
+    dashboard:
+      ingress:
+        enabled: false
+        ingressClassName: nginx
+        hosts:
+          - polaris.your.domain.here
+        annotations:
+          kubernetes.io/tls-acme: "true"
+        tls:
+        - secretName: polaris-your-domain-here
+          hosts:
+          - polaris.your.domain.here
+# FIXME Update with your domain name

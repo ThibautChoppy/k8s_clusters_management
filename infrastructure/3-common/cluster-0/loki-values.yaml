@@ -1,0 +1,56 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: monitoring
+spec:
+  chart:
+    spec:
+      version: "6.2.0"
+  # https://github.com/grafana/loki/blob/main/production/helm/loki/values.yaml
+  values:
+    loki:
+      commonConfig:
+        replication_factor: 1
+
+    singleBinary:
+      replicas: 1
+
+    monitoring:
+      dashboards:
+        enabled: true
+      rules:
+        enabled: true
+        labels:
+          release: kubepromstack
+        additionalGroups:
+        - name: additional-loki-rules
+          rules:
+            - record: job:loki_request_duration_seconds_bucket:sum_rate
+              expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job)
+            - record: job_route:loki_request_duration_seconds_bucket:sum_rate
+              expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
+            - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
+              expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
+      serviceMonitor:
+        enabled: true
+        labels:
+          release: kubepromstack
+        metricsInstance:
+          enabled: false
+      selfMonitoring:
+        enabled: false
+        grafanaAgent:
+          installOperator: false
+      lokiCanary:
+        enabled: false
+
+    networkPolicy:
+      enabled: false
+---
+$patch: delete
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: loki
+  namespace: monitoring

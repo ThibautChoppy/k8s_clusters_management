@@ -1,0 +1,207 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: monitoring
+spec:
+  chart:
+    spec:
+      version: "58.1.1"
+  # https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+  values:
+    crds:
+      enabled: false
+
+    additionalPrometheusRulesMap:
+      nginx:
+        groups:
+        - name: nginx
+          rules:
+            - alert: NGINXConfigFailed
+              expr: count(nginx_ingress_controller_config_last_reload_successful == 0) > 0
+              for: 1s
+              labels:
+                severity: critical
+              annotations:
+                description: bad ingress config - nginx config test failed
+                summary: uninstall the latest ingress changes to allow config reloads to resume
+            - alert: NGINXCertificateExpiry
+              expr: (avg(nginx_ingress_controller_ssl_expire_time_seconds) by (host) - time()) < 604800
+              for: 1s
+              labels:
+                severity: critical
+              annotations:
+                description: ssl certificate(s) will expire in less then a week
+                summary: renew expiring certificates to avoid downtime
+            - alert: NGINXTooMany500s
+              expr: 100 * ( sum( nginx_ingress_controller_requests{status=~"5.+"} ) / sum(nginx_ingress_controller_requests) ) > 5
+              for: 1m
+              labels:
+                severity: warning
+              annotations:
+                description: Too many 5XXs
+                summary: More than 5% of all requests returned 5XX, this requires your attention
+            - alert: NGINXTooMany400s
+              expr: 100 * ( sum( nginx_ingress_controller_requests{status=~"4.+"} ) / sum(nginx_ingress_controller_requests) ) > 5
+              for: 1m
+              labels:
+                severity: warning
+              annotations:
+                description: Too many 4XXs
+                summary: More than 5% of all requests returned 4XX, this requires your attention
+        - name: vault
+          rules:
+            - alert: vault-HighResponseTime
+              annotations:
+                message: The response time of Vault is over 500ms on average over the last 5 minutes.
+              expr: vault_core_handle_request{quantile="0.5", namespace="mynamespace"} > 500
+              for: 5m
+              labels:
+                severity: warning
+            - alert: vault-HighResponseTime
+              annotations:
+                message: The response time of Vault is over 1s on average over the last 5 minutes.
+              expr: vault_core_handle_request{quantile="0.5", namespace="mynamespace"} > 1000
+              for: 5m
+              labels:
+                severity: critical
+    alertmanager:
+      alertmanagerSpec:
+        replicas: 2
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: nfs-csi
+
+    prometheus:
+      prometheusSpec:
+        replicas: 2
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: nfs-csi
+              resources:
+                requests:
+                  storage: 15Gi
+
+    # https://github.com/grafana/helm-charts/blob/main/charts/grafana/values.yaml
+    grafana:
+      replicas: 2
+      admin:
+        existingSecret: "grafana"
+        userKey: admin-user
+        passwordKey: admin-password
+
+      ingress:
+        enabled: false
+        annotations:
+          kubernetes.io/ingress.class: nginx
+          kubernetes.io/tls-acme: "true"
+        hosts:
+          - grafana.choppy.cloud
+        tls:
+        - secretName: grafana-choppy-cloud
+          hosts:
+          - grafana.choppy.cloud
+
+      envValueFrom:
+        GF_AUTH_GITHUB_CLIENT_ID:
+          secretKeyRef:
+            name: grafana
+            key: oidc-client-id
+        GF_AUTH_GITHUB_CLIENT_SECRET:
+          secretKeyRef:
+            name: grafana
+            key: oidc-client-secret
+        GF_DATABASE_PASSWORD:
+          secretKeyRef:
+            name: postgresql
+            key: password
+
+      dashboards:
+        default:
+          logging:
+            gnetId: 13639
+            datasource: Loki
+            revision: 2
+          nginx:
+            gnetId: 16677
+            datasource: Prometheus
+            revision: 2
+          # prometheus:
+          #   gnetId: 3662
+          #   datasource: Prometheus
+          #   revision: 2
+          # psql:
+          #   gnetID: 9628
+          #   datasource: Prometheus
+          #   revision: 7
+          vault:
+            gnetId: 12904
+            datasource: Prometheus
+            revision: 2
+          # geo-nginx:
+          #   gnetId: 12559
+          #   datasource: Loki
+          #   revision: 13
+
+      grafana.ini:
+        dataproxy:
+          timeout: 310
+        server:
+          root_url: "https://{{ if (and .Values.ingress.enabled .Values.ingress.hosts) }}{{ .Values.ingress.hosts | first }}{{ else }}''{{ end }}/"
+        auth:
+          disable_login_form: false
+          oauth_allow_insecure_email_lookup: true
+        auth.anonymous:
+          enabled: false
+        auth.github:
+          enabled: true
+          allow_sign_up: true
+          scopes: user:email,read:org
+          auth_url: https://github.com/login/oauth/authorize
+          token_url: https://github.com/login/oauth/access_token
+          api_url: https://api.github.com/user
+          allowed_organizations: ["your-github-organization"] # FIXME Update with your organization
+          allow_assign_grafana_admin: true
+          role_attribute_path: "([login=='YourUsername'][0] || [login=='OtherUsername'][0]) && 'GrafanaAdmin' || 'Viewer'" # FIXME Update with your username
+        database:
+          type: postgres
+          host: postgresql-ha-pgpool.monitoring:5432
+          name: grafana
+          user: grafana
+        log:
+          level: debug
+
+      extraSecretMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "grafana"
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  parameters:
+    roleName: "production-app"
+    vaultAddress: "http://vault.vault.svc:8200"
+    objects: |
+      - objectName: "user"
+        secretPath: "infra/data/grafana"
+        secretKey: "admin_user"
+      - objectName: "password"
+        secretPath: "infra/data/grafana"
+        secretKey: "admin_password"
+      - objectName: "oidc_client_id"
+        secretPath: "infra/data/grafana"
+        secretKey: "oidc_client_id"
+      - objectName: "oidc_client_secret"
+        secretPath: "infra/data/grafana"
+        secretKey: "oidc_client_secret"

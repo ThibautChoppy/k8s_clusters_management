@@ -1,0 +1,35 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: postgresql-ha
+spec:
+  releaseName: postgresql-ha
+  chart:
+    spec:
+      chart: postgresql-ha
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: flux-system
+      version: "*"
+  interval: 2h
+  values:
+  # https://github.com/bitnami/charts/blob/main/bitnami/postgresql-ha/values.yaml
+    nameOverride: "postgresql-ha"
+    fullnameOverride: "postgresql-ha"
+
+    global:
+      postgresql:
+        username: "admin"
+        database: "psql"
+
+    postgresql:
+      updateStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 25%
+          maxUnavailable: 25%
+
+      image:
+        pullPolicy: Always
+        debug: true

@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+  - ../base/key-vault
+  - ../base/monitoring
+  - ../base/polaris
+
+patchesStrategicMerge:
+  - vault-values.yaml
+  - postgresql-values.yaml
+  - prometheus-values.yaml
+  - loki-values.yaml
+  - promtail-values.yaml
+  - polaris-values.yaml

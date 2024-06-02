@@ -1,0 +1,301 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+spec:
+  releaseName: kubepromstack
+  dependsOn:
+    - name: postgresql-ha
+      namespace: monitoring
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+      version: "*"
+  interval: 2h
+  # install:
+  #   crds: Create
+  # upgrade:
+  #   crds: CreateReplace
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              # Ignore these objects from Flux diff as they are mutated from chart hooks
+              kind: (ValidatingWebhookConfiguration|MutatingWebhookConfiguration)
+              name: kubepromstack-admission
+            patch: |
+              - op: add
+                path: /metadata/annotations/helm.toolkit.fluxcd.io~1driftDetection
+                value: disabled
+          - target:
+              # Ignore these objects from Flux diff as they are mutated at apply time but not at dry-run time
+              kind: PrometheusRule
+            patch: |
+              - op: add
+                path: /metadata/annotations/helm.toolkit.fluxcd.io~1driftDetection
+                value: disabled
+          - target:
+              kind: PrometheusRule
+              name: kubepromstack-kubernetes-resources
+              namespace: monitoring
+            patch: |
+              - op: replace
+                path: /spec/groups/0/rules/7/expr
+                value: >-
+                  sum(increase(container_cpu_cfs_throttled_periods_total{container!="", }[5m])) by (container, pod, namespace)
+                    /
+                  sum(increase(container_cpu_cfs_periods_total{}[5m])) by (container, pod, namespace)
+                    > ( 90 / 100 )
+  # https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+  values:
+    nameOverride: "kubepromstack"
+    fullnameOverride: "kubepromstack"
+
+    additionalPrometheusRulesMap:
+      flux-cd:
+        groups:
+        - name: flux
+          rules:
+            - alert: ReconciliationFailure
+              expr: max(gotk_reconcile_condition{status="False",type="Ready"}) by (exported_namespace, name, kind) + on(exported_namespace, name, kind) (max(gotk_reconcile_condition{status="Deleted"}) by (exported_namespace, name, kind)) * 2 == 1
+              for: 10m
+              labels:
+                severity: page
+              annotations:
+                summary: '{{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation has been failing for more than ten minutes.'
+
+    defaultRules:
+      additionalRuleLabels:
+        cluster: loki
+
+    alertmanager:
+      alertmanagerSpec:
+        storage:
+          volumeClaimTemplate:
+            spec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 5Gi
+        resources:
+          requests:
+            cpu: 5m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    
+    kubelet:
+      serviceMonitor:
+        cAdvisorRelabelings:
+          - action: replace
+            replacement: loki
+            targetLabel: cluster
+          - targetLabel: metrics_path
+            sourceLabels:
+              - "__metrics_path__"
+          - targetLabel: "instance"
+            sourceLabels:
+              - "node"
+
+    kubeControllerManager:
+      enabled: true
+
+    coreDns:
+      enabled: true
+      serviceMonitor:
+        port: metrics
+
+    kubeDns:
+      enabled: false
+
+    kubeEtcd:
+      enabled: true
+
+    kubeScheduler:
+      enabled: true
+
+    kubeProxy:
+      enabled: true
+
+    kube-state-metrics:
+      image:
+        pullPolicy: Always
+      prometheus:
+        monitor:
+          relabelings:
+            - action: replace
+              replacement: loki
+              targetLabel: cluster
+            - targetLabel: "instance"
+              sourceLabels:
+                - "__meta_kubernetes_pod_node_name"
+      # resources:
+      #   requests:
+      #     cpu: 10m
+      #     memory: 64Mi
+      #   limits:
+      #     cpu: 100m
+      #     memory: 256Mi
+    
+    nodeExporter:
+      operatingSystems:
+        darwin:
+          enabled: false
+
+    prometheus-node-exporter:
+      prometheus:
+        monitor:
+          relabelings:
+            - action: replace
+              replacement: loki
+              targetLabel: cluster
+            - targetLabel: "instance"
+              sourceLabels:
+                - "__meta_kubernetes_pod_node_name"
+      image:
+        pullPolicy: Always
+      # resources:
+      #   requests:
+      #     cpu: 10m
+      #     memory: 64Mi
+      #   limits:
+      #     cpu: 250m
+      #     memory: 256Mi
+
+    prometheusOperator:
+      image:
+        pullPolicy: Always
+      # resources:
+      #   requests:
+      #     cpu: 5m
+      #     memory: 128Mi
+      #   limits:
+      #     cpu: 200m
+      #     memory: 256Mi
+      # prometheusConfigReloader:
+      #   resources:
+      #     requests:
+      #       cpu: 5m
+      #       memory: 16Mi
+      #     limits:
+      #       cpu: 100m
+      #       memory: 64Mi
+
+    prometheus:
+      prometheusSpec:
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 25Gi
+        resources:
+          requests:
+            memory: 1024Mi
+      serviceMonitor:
+        relabelings:
+          - targetLabel: cluster
+            replacement: 'cluster_name'
+          - action: replace
+            replacement: loki
+            targetLabel: cluster
+
+      additionalPodMonitors:
+        - name: flux-system
+          selector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - helm-controller
+                  - source-controller
+                  - kustomize-controller
+                  - notification-controller
+                  - image-automation-controller
+                  - image-reflector-controller
+          namespaceSelector:
+            matchNames:
+              - flux-system
+          podMetricsEndpoints:
+            - port: http-prom
+              relabelings:
+                # https://github.com/prometheus-operator/prometheus-operator/issues/4816
+                - sourceLabels: [__meta_kubernetes_pod_phase]
+                  action: keep
+                  regex: Running
+
+    # https://github.com/grafana/helm-charts/blob/main/charts/grafana/values.yaml
+    grafana:
+      defaultDashboardsTimezone: Europe/France
+
+      image:
+        pullPolicy: Always
+
+      serviceMonitor:
+        enabled: true
+        labels:
+          release: kubepromstack
+
+      resources:
+        requests:
+          cpu: 20m
+          memory: 128Mi
+        limits:
+          cpu: 800m
+          memory: 1024Mi
+
+      datasources:
+        loki.yaml:
+          apiVersion: 1
+          datasources:
+            - name: Loki
+              type: loki
+              uid: loki
+              url: http://loki-gateway
+              editable: true
+              access: proxy
+              orgId: 1
+              jsonData:
+                maxLines: 10000
+
+      dashboardProviders:
+        default.yaml:
+          apiVersion: 1
+          providers:
+          - name: 'default'
+            orgId: 1
+            folder: ''
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/default
+
+      sidecar:
+        imagePullPolicy: Always
+        # logLevel: WARN
+        resources:
+          requests:
+            cpu: 5m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+        dashboards:
+          enabled: true
+          provider:
+            allowUiUpdates: true
+        datasources:
+          enabled: true
+
+      persistence:
+        enabled: false
+
+      initChownData:
+        image:
+          pullPolicy: Always

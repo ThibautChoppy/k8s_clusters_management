@@ -1,0 +1,29 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: metallb
+  namespace: metallb-system
+spec:
+  chart:
+    spec:
+      version: "5.0.3"
+  # https://github.com/bitnami/charts/blob/main/bitnami/metallb/values.yaml
+  values:
+    controller:
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          namespace: "monitoring"
+          labels:
+            release: kubepromstack
+      priorityClassName: "system-cluster-critical"
+    speaker:
+      metrics:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+          namespace: "monitoring"
+          labels:
+            release: kubepromstack
+      priorityClassName: "system-cluster-critical"

@@ -1,0 +1,175 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  chart:
+    spec:
+      version: "0.28.0"
+  # https://github.com/hashicorp/vault-helm/blob/main/values.yaml
+  values:
+    global:
+      serverTelemetry:
+        prometheusOperator: true
+
+    injector:
+      replicas: 2
+      metrics:
+        enabled: true
+      image:
+        pullPolicy: Always
+      agentDefaults:
+        cpuLimit: "10m"
+        cpuRequest: "5m"
+        memLimit: "128Mi"
+        memRequest: "32Mi"
+      securityContext:
+        pod:
+          runAsNonRoot: true
+          runAsGroup: 1000
+          runAsUser: 100
+          fsGroup: 1000
+        container:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+      resources:
+        requests:
+          memory: 16Mi
+          cpu: 5m
+        limits:
+          memory: 256Mi
+          cpu: 25m
+      
+      strategy: |
+        rollingUpdate:
+          maxSurge: 25%
+          maxUnavailable: 25%
+        type: RollingUpdate
+
+    server:
+      image:
+        pullPolicy: Always
+
+      resources:
+        requests:
+          memory: 128Mi
+          cpu: 35m
+        limits:
+          memory: 256Mi
+          cpu: 250m
+
+      ingress:
+        enabled: false
+        annotations:
+          kubernetes.io/tls-acme: "true"
+        ingressClassName: "nginx"
+        hosts:
+          - host: vault.your.domain.name
+        tls:
+          - secretName: vault-your-domain-name
+            hosts:
+              - vault.your.domain.name
+
+      livenessProbe:
+        enabled: true
+
+      networkPolicy:
+        enabled: true
+
+      dataStorage:
+        storageClass: nfs-csi
+      
+      standalone:
+        enabled: false
+
+      ha:
+        enabled: true
+        replicas: 2
+        raft:
+          enabled: true
+          setNodeId: true
+          config: |
+            ui = true
+
+            listener "tcp" {
+              tls_disable = 1
+              address = "[::]:8200"
+              cluster_address = "[::]:8201"
+
+              telemetry {
+                unauthenticated_metrics_access = "true"
+              }
+            }
+
+            telemetry {
+              prometheus_retention_time = "30s",
+              disable_hostname = true
+            }
+
+            storage "raft" {
+              path = "/vault/data"
+
+              retry_join {
+                leader_api_addr =  "http://vault-0.vault-internal:8200"
+              }
+              retry_join {
+                leader_api_addr =  "http://vault-1.vault-internal:8200"
+              }
+
+              autopilot {
+                cleanup_dead_servers = "true"
+                last_contact_threshold = "200ms"
+                last_contact_failure_threshold = "10m"
+                max_trailing_logs = 250000
+                min_quorum = 5
+                server_stabilization_time = "10s"
+              }
+            }
+
+            service_registration "kubernetes" {}
+
+      statefulSet:
+        securityContext:
+          pod:
+            runAsNonRoot: true
+            runAsGroup: 1000
+            runAsUser: 100
+            fsGroup: 1000
+          container:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+    csi:
+      enabled: true
+      image:
+        pullPolicy: Always
+      resources:
+        requests:
+          memory: 32Mi
+          cpu: 5m
+        limits:
+          memory: 256Mi
+          cpu: 25m
+      daemonSet:
+        securityContext:
+          container:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+    ui:
+      enabled: true
+    
+    serverTelemetry:
+      serviceMonitor:
+        enabled: true
+        selectors:
+          release: kubepromstack

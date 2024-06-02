@@ -1,0 +1,9 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: secrets-store-csi-driver
+  namespace: kube-system
+spec:
+  chart:
+    spec:
+      version: "1.4.3"

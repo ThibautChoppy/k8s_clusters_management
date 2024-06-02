@@ -1,0 +1,15 @@
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: loki
+  namespace: monitoring
+spec:
+  provider: vault
+  secretObjects:
+  - data:
+    - key: AWS_ACCESS_KEY_ID
+      objectName: access_key_id
+    - key: AWS_SECRET_ACCESS_KEY
+      objectName: secret_access_key
+    secretName: loki
+    type: Opaque

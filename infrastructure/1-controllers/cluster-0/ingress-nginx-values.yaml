@@ -1,0 +1,40 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: nginx-ingress-controller
+  namespace: ingress-controller
+spec:
+  chart:
+    spec:
+      version: "4.10.1"
+  values:
+    # https://github.com/kubernetes/ingress-nginx/blob/main/charts/ingress-nginx/values.yaml
+    controller:
+      replicaCount: 2
+
+      networkPolicy:
+        enabled: true
+
+      topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: '{{ include "ingress-nginx.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
+              app.kubernetes.io/component: controller
+          topologyKey: kubernetes.io/hostname
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+
+      priorityClassName: "system-cluster-critical"
+
+      metrics:
+        enabled: true
+        service:
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "10254"
+        serviceMonitor:
+          enabled: true
+          namespace: "monitoring"
+          additionalLabels:
+            release: kubepromstack

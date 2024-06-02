@@ -1,0 +1,18 @@
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: postgresql
+spec:
+  provider: vault
+  secretObjects:
+  - data:
+    - key: admin-password
+      objectName: psql_admin_password
+    - key: postgres-password
+      objectName: psql_postgres_password
+    - key: repmgr-password
+      objectName: psql_repmgr_password
+    - key: password
+      objectName: psql_password
+    secretName: postgresql
+    type: Opaque

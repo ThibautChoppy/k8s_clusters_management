@@ -1,0 +1,49 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: promtail
+spec:
+  releaseName: promtail
+  dependsOn:
+    - name: kube-prometheus-stack
+  chart:
+    spec:
+      chart: promtail
+      sourceRef:
+        kind: HelmRepository
+        name: grafana-charts
+      version: "*"
+  interval: 2h
+  # https://github.com/grafana/helm-charts/blob/main/charts/promtail/values.yaml
+  values:
+    configmap:
+      enabled: true
+    image:
+      pullPolicy: Always
+    resources:
+      requests:
+        cpu: 20m
+        memory: 128Mi
+      limits:
+        # cpu: 200m
+        memory: 512Mi
+    config:
+      logLevel: warn
+      clients:
+        - url: http://loki-gateway/loki/api/v1/push
+          tenant_id: 1
+      snippets:
+        extraScrapeConfigs: |
+          - job_name: system
+            pipeline_stages:
+            - replace:
+                expression: '(?:[0-9]{1,3}\.){3}([0-9]{1,3})'
+                replace: '***'
+            static_configs:
+            - targets:
+               - localhost
+              labels:
+                job: nginx_access_log
+                host: staging
+                agent: promtail
+                __path__: /var/log/nginx/*access.log

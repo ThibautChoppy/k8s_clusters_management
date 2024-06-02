@@ -1,0 +1,18 @@
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: mongodb
+spec:
+  provider: vault
+  secretObjects:
+  - data:
+    - key: mongodb-root-password
+      objectName: mongodb_root_password
+    - key: mongodb-metrics-password
+      objectName: mongodb_metrics_password
+    - key: mongodb-replica-set-key
+      objectName: mongodb_replica_set_key
+    - key: mongodb-passwords
+      objectName: mongodb_passwords
+    secretName: mongodb
+    type: Opaque

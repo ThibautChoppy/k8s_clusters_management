@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+  - ../base/cluster-issuer.yaml
+  - ../base/storageClass/local-storageClass.yaml
+  - ../base/storageClass/nfs-storageClass.yaml
+  # - ../base/storageClass/smb-storageClass.yaml
+
+resources:
+  # - smbcreds.yaml
+
+patchesStrategicMerge:
+  - cluster-issuer.yaml

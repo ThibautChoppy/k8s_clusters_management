@@ -1,0 +1,14 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: polaris
+spec:
+  releaseName: polaris
+  chart:
+    spec:
+      chart: polaris
+      sourceRef:
+        kind: HelmRepository
+        name: fairwinds-stable
+      version: "*"
+  interval: 2h

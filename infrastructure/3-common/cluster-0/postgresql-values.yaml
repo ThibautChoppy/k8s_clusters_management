@@ -1,0 +1,88 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: postgresql-ha
+  namespace: monitoring
+spec:
+  chart:
+    spec:
+      version: "14.0.3"
+  values:
+  # https://github.com/bitnami/charts/blob/main/bitnami/postgresql-ha/values.yaml
+    global:
+      postgresql:
+        username: "grafana"
+        database: "grafana"
+        existingSecret: "postgresql"
+      pgpool:
+        existingSecret: "postgresql"
+    
+    persistence:
+      storageClass: "nfs-csi"
+
+    postgresql:
+      extraVolumeMounts:
+        - name: secrets-store-inline-psql
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+
+      extraVolumes:
+        - name: secrets-store-inline-psql
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "postgresql"
+
+      replicaCount: 2
+
+      resources:
+        limits:
+          memory: 2Gi
+          cpu: 500m
+        requests:
+          memory: 128Mi
+          cpu: 50m
+      
+        nodeAffinityPreset:
+          type: "hard"
+          key: "kubernetes.io/hostname"
+          values:
+            - k8s-node-1
+            - k8s-node-2
+
+    metrics:
+      enabled: false
+      image:
+        pullPolicy: Always
+      serviceMonitor:
+        enabled: true
+        namespace: "monitoring"
+        interval: "60s"
+        labels:
+          release: kubepromstack
+        selector:
+          prometheus: kubepromstack-prometheus
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: postgresql
+  namespace: monitoring
+spec:
+  parameters:
+    roleName: "production-app"
+    vaultAddress: "http://vault.vault.svc:8200"
+    objects: |
+      - objectName: "psql_admin_password"
+        secretPath: "infra/data/grafana"
+        secretKey: "psql_admin_password"
+      - objectName: "psql_postgres_password"
+        secretPath: "infra/data/grafana"
+        secretKey: "psql_postgres_password"
+      - objectName: "psql_repmgr_password"
+        secretPath: "infra/data/grafana"
+        secretKey: "psql_repmgr_password"
+      - objectName: "psql_password"
+        secretPath: "infra/data/grafana"
+        secretKey: "psql_password"

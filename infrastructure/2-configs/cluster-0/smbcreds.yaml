@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: smbcreds
+    namespace: default
+data:
+    username: smb-user
+    password: smb-password
+
+# FIXME update this - SOPS Age encryption strongly recommanded
