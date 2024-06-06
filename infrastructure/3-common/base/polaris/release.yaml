@@ -11,4 +11,4 @@ spec:
         kind: HelmRepository
         name: fairwinds-stable
       version: "*"
-  interval: 2h
+  interval: 24h

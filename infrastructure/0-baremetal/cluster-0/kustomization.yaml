@@ -3,10 +3,12 @@ kind: Kustomization
 bases:
   - ../base/bitnami-repository.yaml
   - ../base/metallb.yaml
-  - ../base/nfs-csi-driver.yaml
-  # - ../base/smb-csi-driver.yaml
+  - ../base/csi-drivers/secrets-csi-driver.yaml
+  - ../base/csi-drivers/nfs-csi-driver.yaml
+  # - ../base/csi-drivers/smb-csi-driver.yaml
 
 patchesStrategicMerge:
   - metallb-values.yaml
+  - secrets-csi-driver-values.yaml
   - nfs-csi-driver-values.yaml
   # - smb-csi-driver-values.yaml

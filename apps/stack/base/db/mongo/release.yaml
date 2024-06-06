@@ -12,7 +12,7 @@ spec:
         name: bitnami
         namespace: flux-system
       version: "*"
-  interval: 2h
+  interval: 24h
   values:
   # https://github.com/bitnami/charts/blob/main/bitnami/mongodb/values.yaml
     nameOverride: "mongodb"

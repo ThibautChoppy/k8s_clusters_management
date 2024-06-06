@@ -11,5 +11,5 @@ spec:
         kind: HelmRepository
         name: hashicorp
       version: "*"
-  interval: 2h
+  interval: 24h
   # https://github.com/hashicorp/vault-helm/blob/main/values.yaml

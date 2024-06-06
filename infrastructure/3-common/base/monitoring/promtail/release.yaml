@@ -13,7 +13,7 @@ spec:
         kind: HelmRepository
         name: grafana-charts
       version: "*"
-  interval: 2h
+  interval: 24h
   # https://github.com/grafana/helm-charts/blob/main/charts/promtail/values.yaml
   values:
     configmap:

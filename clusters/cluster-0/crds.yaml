@@ -28,7 +28,7 @@ spec:
         kind: HelmRepository
         name: prometheus-community
       version: "11.0.0"
-  interval: 2h
+  interval: 24h
   install:
     crds: Create
   upgrade:
